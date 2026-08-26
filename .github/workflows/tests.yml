@@ -1,15 +1,17 @@
-name: Backend Tests
+name: Tests
 
 on:
   push:
     paths:
       - "backend/**"
+      - "frontend/**"
   pull_request:
     paths:
       - "backend/**"
+      - "frontend/**"
 
 jobs:
-  test:
+  backend-tests:
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -42,3 +44,26 @@ jobs:
         env:
           DATABASE_URL: postgresql://robo:robo_dev_password@localhost:5432/robo_diagnostics
         run: pytest -v
+
+  frontend-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Run tests
+        working-directory: frontend
+        run: npm test
+
+      - name: Build
+        working-directory: frontend
+        run: npm run build
