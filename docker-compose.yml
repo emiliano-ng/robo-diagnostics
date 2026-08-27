@@ -31,5 +31,18 @@ services:
     volumes:
       - ./backend:/app
 
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Corre server-side dentro del contenedor -> usa el nombre del
+        # servicio de Docker ("backend"), no localhost/127.0.0.1.
+        NEXT_PUBLIC_API_BASE_URL: http://backend:8000
+    container_name: robo_diagnostics_frontend
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
+
 volumes:
   pgdata:

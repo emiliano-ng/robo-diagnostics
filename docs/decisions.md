@@ -1,4 +1,5 @@
 # Design decisions
+
 ## Database schema
 
 **Decision:** split `experiments` / `runs` / `telemetry_points` / `diagnostics`

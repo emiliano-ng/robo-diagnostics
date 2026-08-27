@@ -46,19 +46,33 @@ Analysis   FastAPI
    plots trajectory and EKF covariance over time, including side-by-side
    run comparisons.
 
+The whole stack (database, backend, frontend) can be run together with a
+single `docker compose up`.
+
 ## Repo structure
 
 ```
 db/                 -> SQL schema
 backend/            -> FastAPI (Python) — REST API + tests
 ingestion/cpp/      -> C++ node that reads rosbag2 and writes to Postgres
-frontend/           -> Next.js (TypeScript) frontend
-.github/workflows/  -> CI (backend tests on every push)
+frontend/           -> Next.js (TypeScript) frontend + tests
+.github/workflows/  -> CI (backend and frontend tests on every push)
 docker-compose.yml
 docs/decisions.md   -> design decisions log, with the reasoning behind each one
 ```
 
-## Running it locally
+## Running it
+
+### Option A — full stack with Docker Compose (closest to production)
+
+```bash
+docker compose up --build
+```
+
+This builds and starts the database, backend, and frontend together.
+Open `http://localhost:3000`.
+
+### Option B — manual, for faster local iteration
 
 **1. Database:**
 
@@ -89,18 +103,33 @@ npm run dev
 
 Opens at `http://localhost:3000`.
 
-**4. Tests:**
+> Don't run Option A and Option B at the same time — they'll fight over
+> ports 3000 and 8000.
+
+### Tests
+
+Backend:
 
 ```bash
 cd backend
 pytest -v
 ```
 
-Run against a real Postgres instance (not a mock/SQLite) using transactions
-that roll back after each test — see `docs/decisions.md` for why.
+Runs against a real Postgres instance (not a mock/SQLite) using
+transactions that roll back after each test — see `docs/decisions.md`
+for why.
 
-**5. Ingesting a real bag** (requires a ROS2 workspace with `ingestion/cpp`
-symlinked in as a package and built with `colcon`):
+Frontend:
+
+```bash
+cd frontend
+npm test
+```
+
+### Ingesting a real bag
+
+Requires a ROS2 workspace with `ingestion/cpp` symlinked in as a package
+and built with `colcon`:
 
 ```bash
 ingest_run <path_to_bag> <experiment_id> "postgresql://robo:robo_dev_password@localhost:5432/robo_diagnostics"
@@ -111,9 +140,10 @@ ingest_run <path_to_bag> <experiment_id> "postgresql://robo:robo_dev_password@lo
 - [x] Database schema (`experiments` → `runs` → `telemetry_points` → `diagnostics`)
 - [x] Real C++ ingestion from rosbag2 (tested end-to-end with real `slam_bot` data)
 - [x] FastAPI REST API: list experiments/runs, trajectory, run comparison
-- [x] Automated tests running in CI (GitHub Actions)
 - [x] Next.js frontend: experiment/run browser, trajectory + covariance charts, run comparison
-- [ ] Full stack Dockerization + extended CI
+- [x] Automated tests (backend + frontend) running in CI (GitHub Actions)
+- [x] Full stack containerized with Docker Compose
+- [ ] More robust error handling (structured logging, DB-down behavior)
 - [ ] SLAM degradation detector (statistical + ML comparison)
 - [ ] Final documentation, recorded demo, deployment
 
@@ -121,5 +151,5 @@ ingest_run <path_to_bag> <experiment_id> "postgresql://robo:robo_dev_password@lo
 
 See [`docs/decisions.md`](docs/decisions.md) — every non-trivial decision
 (why Postgres, why this schema, why testing with transactions instead of a
-separate database, etc.) is documented there with the reasoning, not just
-the outcome.
+separate database, a Docker bug found and fixed, etc.) is documented there
+with the reasoning, not just the outcome.
