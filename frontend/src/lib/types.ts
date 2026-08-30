@@ -27,4 +27,19 @@ export interface TelemetryPoint {
   angular_vel: number | null;
 }
 
+export interface Diagnostic {
+  t_seconds: number;
+  detector_name: string;
+  status: "normal" | "warning" | "degraded";
+  score: number | null;
+}
+
+export interface AnalysisSummary {
+  run_id: number;
+  detector_name: string;
+  total_points: number;
+  flagged_count: number;
+  flagged_pct: number;
+}
+
 export type CompareResult = Record<string, TelemetryPoint[]>;
