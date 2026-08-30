@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import select
+from sqlalchemy import select, delete
 
 from app.database import get_db
-from app.models import Experiment, Run, TelemetryPoint
-from app.schemas import ExperimentOut, RunOut, TelemetryPointOut
+from app.models import Experiment, Run, TelemetryPoint, Diagnostic
+from app.schemas import ExperimentOut, RunOut, TelemetryPointOut, DiagnosticOut, AnalysisSummaryOut
+from app.analysis.degradation import baseline_threshold_detector, TelemetrySample, DETECTOR_NAME
 
 router = APIRouter(prefix="/experiments", tags=["experiments"])
 
@@ -69,3 +70,68 @@ def compare_runs(
         result[run_id] = [TelemetryPointOut.model_validate(p) for p in points]
 
     return result
+
+
+@router.post("/runs/{run_id}/diagnostics/analyze", response_model=AnalysisSummaryOut)
+def analyze_run(run_id: int, db: Session = Depends(get_db)):
+    """Runs the baseline degradation detector against this run's stored
+    telemetry and persists the results, replacing any previous results
+    from the same detector — so re-analyzing after re-ingesting a bag
+    (or after tuning the detector) never leaves stale rows behind.
+    """
+    run = db.get(Run, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    points = db.scalars(
+        select(TelemetryPoint)
+        .where(TelemetryPoint.run_id == run_id)
+        .order_by(TelemetryPoint.t_seconds)
+    ).all()
+
+    if not points:
+        raise HTTPException(status_code=400, detail="This run has no telemetry to analyze")
+
+    samples = [
+        TelemetrySample(p.t_seconds, p.cov_xx, p.cov_yy, p.cov_tt) for p in points
+    ]
+    results = baseline_threshold_detector(samples)
+
+    db.execute(
+        delete(Diagnostic).where(
+            Diagnostic.run_id == run_id, Diagnostic.detector_name == DETECTOR_NAME
+        )
+    )
+    db.add_all([
+        Diagnostic(
+            run_id=run_id,
+            t_seconds=r.t_seconds,
+            detector_name=r.detector_name,
+            status=r.status,
+            score=r.score,
+        )
+        for r in results
+    ])
+    db.commit()
+
+    flagged = sum(1 for r in results if r.status != "normal")
+    return AnalysisSummaryOut(
+        run_id=run_id,
+        detector_name=DETECTOR_NAME,
+        total_points=len(results),
+        flagged_count=flagged,
+        flagged_pct=round(100 * flagged / len(results), 1),
+    )
+
+
+@router.get("/runs/{run_id}/diagnostics", response_model=list[DiagnosticOut])
+def get_diagnostics(run_id: int, db: Session = Depends(get_db)):
+    run = db.get(Run, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    return db.scalars(
+        select(Diagnostic)
+        .where(Diagnostic.run_id == run_id)
+        .order_by(Diagnostic.t_seconds)
+    ).all()
