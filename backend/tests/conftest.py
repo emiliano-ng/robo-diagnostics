@@ -76,3 +76,39 @@ def sample_run_with_telemetry(db_session, sample_experiment):
     db_session.add_all(points)
     db_session.commit()
     return run
+
+
+@pytest.fixture()
+def run_with_analyzable_telemetry(db_session, sample_experiment):
+    """A run with enough points for the detector's rolling window to be
+    meaningful (unlike sample_run_with_telemetry, which only has 2 points
+    — too few for MIN_WINDOW_POINTS), including a short sustained spike
+    so analysis has something real to flag.
+    """
+    run = Run(experiment_id=sample_experiment.id, status="complete")
+    db_session.add(run)
+    db_session.commit()
+    db_session.refresh(run)
+
+    points = [
+        TelemetryPoint(run_id=run.id, t_seconds=float(i), x=0.0, y=0.0, theta=0.0,
+                        cov_xx=0.01, cov_yy=0.01, cov_tt=0.01)
+        for i in range(30)
+    ]
+    # sustained 2-point spike, so it clears the temporal-consistency check
+    points.append(TelemetryPoint(run_id=run.id, t_seconds=30.0, x=0.0, y=0.0, theta=0.0,
+                                  cov_xx=0.01, cov_yy=0.01, cov_tt=5.0))
+    points.append(TelemetryPoint(run_id=run.id, t_seconds=31.0, x=0.0, y=0.0, theta=0.0,
+                                  cov_xx=0.01, cov_yy=0.01, cov_tt=5.0))
+    db_session.add_all(points)
+    db_session.commit()
+    return run
+
+
+@pytest.fixture()
+def empty_run(db_session, sample_experiment):
+    run = Run(experiment_id=sample_experiment.id, status="complete")
+    db_session.add(run)
+    db_session.commit()
+    db_session.refresh(run)
+    return run

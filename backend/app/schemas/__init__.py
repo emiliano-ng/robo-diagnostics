@@ -35,3 +35,20 @@ class TelemetryPointOut(BaseModel):
     cov_tt: float | None
     linear_vel: float | None
     angular_vel: float | None
+
+
+class DiagnosticOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    t_seconds: float
+    detector_name: str
+    status: str
+    score: float | None
+
+
+class AnalysisSummaryOut(BaseModel):
+    run_id: int
+    detector_name: str
+    total_points: int
+    flagged_count: int
+    flagged_pct: float
