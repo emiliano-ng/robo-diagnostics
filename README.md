@@ -6,7 +6,8 @@
 > demo sessions. If the live links above are unresponsive, that's why —
 > everything below still works fully from a local clone.
 
-A system to ingest, store, analyze, and diagnose robotics experiments, currently built on top of [`slam_bot`](https://github.com/emiliano-ng/SLAM-bot),
+A system to ingest, store, analyze, and diagnose robotics experiments
+—currently built on top of [`slam_bot`](https://github.com/emiliano-ng/SLAM-bot),
 an EKF-SLAM implementation built from scratch— that automatically flags
 likely localization degradation from real telemetry data.
 
@@ -177,7 +178,7 @@ python -m app.analysis.run_detector <run_id> --save    # persists results
 - [x] Full stack containerized with Docker Compose
 - [x] Deployed to Azure (Container Apps + PostgreSQL Flexible Server)
 - [ ] Comparison against a second (ML-based) detector
-- [ ] Final documentation, recorded demo, deployment
+- [ ] Recorded demo video
 
 ## Design decisions
 
