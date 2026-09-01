@@ -199,6 +199,62 @@ environment-specific branch.
 re-fetches fresh diagnostics on the next render — no manual client-side
 refetch logic needed.
 
+## Deploying to Azure: real obstacles hit with a student subscription
+
+**Decision:** Azure Container Apps for both backend and frontend (reusing
+the exact same Dockerfiles built for Docker Compose, unmodified), plus
+Azure Database for PostgreSQL Flexible Server (Burstable B1ms) — all in
+`canadacentral`.
+
+**Why Container Apps over alternatives:** the frontend relies on Next.js
+Server Actions (see above), which need a real, always-on Node server —
+ruling out static hosting. Container Apps runs the same container image
+that's already tested via Docker Compose, so "it works locally" transfers
+directly to "it works in the cloud" with no separate deployment-specific
+build path to maintain.
+
+**Real problems hit, in the order they appeared (a student/education
+subscription has meaningfully different constraints than a normal paid
+one — worth knowing going in):**
+
+1. **Region restrictions.** The subscription has a policy limiting
+   deployments to a small allow-list of regions
+   (`canadacentral`, `westus2`, `westus3`, `chilecentral`, `centralus`),
+   invisible from a generic "region not available" error — found via
+   `az policy assignment list` / `az policy assignment show`, not
+   guesswork.
+2. **Resource providers not pre-registered.** `Microsoft.DBforPostgreSQL`,
+   `Microsoft.ContainerRegistry`, `Microsoft.App`, and
+   `Microsoft.OperationalInsights` all needed an explicit
+   `az provider register` before their respective resources could be
+   created — a one-time subscription-level step that a normal paid
+   subscription typically already has done.
+3. **ACR Tasks (remote image builds) disabled for the subscription.**
+   `az containerapp up --source ...` tries to build the container image
+   *inside Azure* via ACR Tasks — blocked outright
+   (`TasksOperationsNotAllowed`) on this subscription tier. Worked around
+   by building the image locally with the same Docker setup already used
+   for Docker Compose, then `docker push`-ing it to the registry directly,
+   and using `az containerapp create --image ...` (deploy-only, no
+   remote build) instead of `up`.
+
+**Why this is worth documenting, not just fixing and moving on:** none of
+these were application bugs — they were environment-specific platform
+constraints that only show up against a real cloud subscription, the kind
+of friction a local Docker Compose setup (or a tutorial written against a
+standard paid subscription) never surfaces. Diagnosing each one required
+reading the actual error code (`RequestDisallowedByAzure`,
+`MissingSubscriptionRegistration`, `TasksOperationsNotAllowed`) rather
+than assuming "it's broken" and restarting from scratch.
+
+**Cost control:** Postgres Flexible Server bills by uptime regardless of
+traffic, so it's stopped (`az postgres flexible-server stop`) between
+active demo sessions rather than left running continuously; Container
+Apps are scaled to `--min-replicas 0` for the same reason, since they're
+billed by actual consumption and scale down to zero cost when idle
+(a cold start adds a few seconds' delay on the next request, an
+acceptable trade-off for a portfolio deployment).
+
 ## Still to document as the project progresses
 
 - [ ] Why batch inserts from C++ instead of row-by-row inserts

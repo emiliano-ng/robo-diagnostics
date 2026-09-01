@@ -1,5 +1,11 @@
 # Robotics Experiment & Diagnostics Platform
 
+**Live demo:** [frontend](https://robo-diagnostics-frontend.thankfulmoss-0a7f7ee4.canadacentral.azurecontainerapps.io) · [API docs](https://robo-diagnostics-backend.thankfulmoss-0a7f7ee4.canadacentral.azurecontainerapps.io/docs)
+
+> Note: to control cloud costs, the database is stopped between active
+> demo sessions. If the live links above are unresponsive, that's why —
+> everything below still works fully from a local clone.
+
 A system to ingest, store, analyze, and diagnose robotics experiments, currently built on top of [`slam_bot`](https://github.com/emiliano-ng/SLAM-bot),
 an EKF-SLAM implementation built from scratch— that automatically flags
 likely localization degradation from real telemetry data.
@@ -66,7 +72,7 @@ docs/decisions.md   -> design decisions log, with the reasoning behind each one
 
 ## Running it
 
-### Option A: full stack with Docker Compose 
+### Option A — full stack with Docker Compose (closest to production)
 
 ```bash
 docker compose up --build
@@ -75,7 +81,7 @@ docker compose up --build
 This builds and starts the database, backend, and frontend together.
 Open `http://localhost:3000`.
 
-### Option B: manual, for faster local iteration
+### Option B — manual, for faster local iteration
 
 **1. Database:**
 
@@ -106,7 +112,7 @@ npm run dev
 
 Opens at `http://localhost:3000`.
 
-> Don't run Option A and Option B at the same time they'll fight over
+> Don't run Option A and Option B at the same time — they'll fight over
 > ports 3000 and 8000.
 
 ### Tests
@@ -119,7 +125,7 @@ pytest -v
 ```
 
 Runs against a real Postgres instance (not a mock/SQLite) using
-transactions that roll back after each test, see `docs/decisions.md`
+transactions that roll back after each test — see `docs/decisions.md`
 for why.
 
 Frontend:
@@ -169,12 +175,13 @@ python -m app.analysis.run_detector <run_id> --save    # persists results
       charts with degradation overlay, run comparison, one-click analysis
 - [x] Automated tests (backend + frontend) running in CI (GitHub Actions)
 - [x] Full stack containerized with Docker Compose
+- [x] Deployed to Azure (Container Apps + PostgreSQL Flexible Server)
 - [ ] Comparison against a second (ML-based) detector
 - [ ] Final documentation, recorded demo, deployment
 
 ## Design decisions
 
-See [`docs/decisions.md`](docs/decisions.md) — every non-trivial decision
+See [`docs/decisions.md`](docs/decisions.md), every non-trivial decision
 (why Postgres, why this schema, why testing with transactions instead of a
 separate database, a Docker bug found and fixed, how the degradation
 detector went from 25% false positives to a defensible baseline, etc.) is
