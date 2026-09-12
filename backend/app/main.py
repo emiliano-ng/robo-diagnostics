@@ -5,7 +5,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import OperationalError
 
-from app.routers import experiments
+from app.routers import experiments, agent
 from app.database import check_db_connection
 from app.logging_config import configure_logging
 
@@ -19,14 +19,11 @@ app = FastAPI(
 )
 
 app.include_router(experiments.router)
+app.include_router(agent.router)
 
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    """One structured log line per request: method, path, status, duration.
-    This is the first thing you'd check to answer "is the API slow, or is
-    it a specific endpoint?" without needing to reproduce the issue.
-    """
     start = time.monotonic()
     response = await call_next(request)
     duration_ms = (time.monotonic() - start) * 1000
@@ -42,11 +39,6 @@ async def log_requests(request: Request, call_next):
 
 @app.exception_handler(OperationalError)
 async def database_unavailable_handler(request: Request, exc: OperationalError):
-    # SQLAlchemy raises OperationalError for connection failures (DB down,
-    # network partition, etc.) — distinct from a query being wrong. Worth
-    # its own 503 (Service Unavailable) rather than a generic 500, so a
-    # client/monitor can tell "the API is broken" apart from "the database
-    # is temporarily unreachable, retry me".
     logger.error("Database connection failed handling %s %s", request.method, request.url.path)
     return JSONResponse(
         status_code=503,
@@ -56,9 +48,6 @@ async def database_unavailable_handler(request: Request, exc: OperationalError):
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
-    # Log the full traceback server-side for debugging, but never leak
-    # internals (stack trace, exception message) to the client — that's
-    # an information-disclosure risk, not just a UX nicety.
     logger.exception("Unhandled exception handling %s %s", request.method, request.url.path)
     return JSONResponse(
         status_code=500,

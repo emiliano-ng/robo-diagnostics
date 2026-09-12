@@ -255,6 +255,95 @@ billed by actual consumption and scale down to zero cost when idle
 (a cold start adds a few seconds' delay on the next request, an
 acceptable trade-off for a portfolio deployment).
 
+## Local LLM agent (Ollama) instead of a hosted API
+
+**Decision:** the conversational assistant (`/chat`) runs against a
+local Ollama instance (`qwen2.5:7b-instruct`), not a hosted API like
+OpenAI or Anthropic.
+
+**Why:** no API key or per-token cost to manage for a portfolio project
+that might get poked at by anyone with the repo link; nothing about the
+platform's data leaves the machine; and it directly reuses infrastructure
+already set up for a separate personal project (a voice assistant built
+on Ollama). The trade-off is real, though — a local 7B model is slower
+(10–40s for a multi-tool-call turn on a laptop GPU) and less reliable at
+tool-calling than a frontier hosted model; that's an accepted cost for
+what this project needs to demonstrate (tool-calling architecture),
+not a production latency target.
+
+## Shared service layer (`app/services.py`) instead of duplicated queries
+
+**Decision:** all database queries live in `app/services.py`, called by
+both the REST routers (`app/routers/experiments.py`) and the agent's
+tool functions (`app/agent/tools.py`) — neither talks to SQLAlchemy
+directly.
+
+**Why:** the agent's tools need mostly the same data the REST API already
+exposes (list experiments, get a run's trajectory, analyze a run), just
+summarized differently for an LLM's context instead of returned as full
+JSON. Without this layer, "list runs for an experiment" would exist as
+near-identical SQLAlchemy queries in two places, and the two would
+silently drift the first time one was changed without the other.
+
+**Where REST and agent tools genuinely differ:** the *shape* of the
+output. `services.get_trajectory()` returns full `TelemetryPoint` ORM
+objects (fine for a REST response with hundreds of points); the agent's
+`get_run_summary` tool wraps that same call but returns only a handful
+of aggregate numbers (point count, duration, x/y range) — see the next
+entry for why.
+
+## Agent tools return summaries, never raw telemetry arrays
+
+**Decision:** every tool exposed to the LLM (`list_experiments`,
+`get_run_summary`, `get_diagnostics_summary`, etc.) returns a small
+JSON-serializable summary — counts, ranges, percentages, a capped list
+of sample timestamps — never the raw array of ~1000 telemetry points a
+run can contain.
+
+**Why:** dumping a run's full point array into a 7B local model's context
+window would both blow past what it can usefully reason over in one turn
+and make every response noticeably slower for no benefit — the model
+doesn't need every raw covariance value to answer "what percent of this
+run was flagged," it needs the percentage. `get_diagnostics_summary`
+caps its `sample_flagged_timestamps` list at 15 entries for the same
+reason: enough for the model to cite specific moments in an answer,
+without flooding its context on a run where hundreds of points are
+flagged.
+
+## Bug found integrating the `ollama` Python client: typed objects, not dicts
+
+**Problem:** the very first real (non-mocked) test against a running
+Ollama instance failed with
+`pydantic_core._pydantic_core.ValidationError: history.2 — Input should
+be a valid dictionary`, even though the endpoint's response model
+(`history: list[dict]`) matched what the code was building.
+
+**Root cause:** `response["message"]` from the `ollama` Python client
+returns a typed `Message` object (a pydantic model internal to the
+library), not a plain `dict`. The tool-calling loop appended that object
+directly into the conversation history; the history round-trips through
+Pydantic's `ChatResponse` model on the way back to the client, which
+rejects anything that isn't an actual `dict` — so the failure only
+surfaced when the *response* was being serialized, several steps removed
+from where the wrong type was introduced. Two prior tool-calling turns
+had already succeeded (visible in the request logs) before this tripped,
+which made it look at first like a deeper reasoning failure rather than
+a type mismatch.
+
+**Fix:** convert the message before appending it —
+`message.model_dump() if hasattr(message, "model_dump") else dict(message)`
+— handling both the real client's typed object and the plain-dict
+messages used by the test suite's fake client, so the same code path
+works in both places without a test-only branch.
+
+**Why this was worth a regression test, not just a fix:** the mocked
+loop tests all passed before this was found, because the fakes used in
+those tests already returned plain dicts — they couldn't have caught
+this. `test_agent_converts_typed_message_object_to_plain_dict` uses a
+fake that specifically returns an object with a `model_dump()` method
+(mimicking the real client's shape) instead of a dict, so this class of
+bug can't silently come back.
+
 ## Still to document as the project progresses
 
 - [ ] Why batch inserts from C++ instead of row-by-row inserts

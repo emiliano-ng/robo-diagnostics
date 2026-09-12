@@ -43,3 +43,20 @@ export interface AnalysisSummary {
 }
 
 export type CompareResult = Record<string, TelemetryPoint[]>;
+
+// Chat / agent types — ChatMessage mirrors the backend's Ollama-format
+// message dicts (role + content, optionally tool_calls/name for
+// tool-related turns). The frontend never needs to construct tool
+// messages itself; it just holds onto and re-sends whatever `history`
+// the backend returns.
+export interface ChatMessage {
+  role: "system" | "user" | "assistant" | "tool";
+  content: string;
+  name?: string;
+  tool_calls?: unknown;
+}
+
+export interface ChatResponse {
+  reply: string;
+  history: ChatMessage[];
+}

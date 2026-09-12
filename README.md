@@ -4,12 +4,15 @@
 
 > Note: to control cloud costs, the database is stopped between active
 > demo sessions. If the live links above are unresponsive, that's why —
-> everything below still works fully from a local clone.
+> everything below still works fully from a local clone. The
+> conversational agent (below) requires a local Ollama instance and
+> isn't part of the Azure deployment.
 
 A system to ingest, store, analyze, and diagnose robotics experiments
 —currently built on top of [`slam_bot`](https://github.com/emiliano-ng/SLAM-bot),
 an EKF-SLAM implementation built from scratch— that automatically flags
-likely localization degradation from real telemetry data.
+likely localization degradation from real telemetry data, and answers
+natural-language questions about it through a local LLM agent.
 
 ## Architecture
 
@@ -33,6 +36,10 @@ Analysis   FastAPI
    └────┬────┘
         ▼
   React / TypeScript
+        │
+        ▼
+Local LLM agent (Ollama) — natural-language
+queries over the same data, via tool-calling
 ```
 
 ## How it works today
@@ -55,20 +62,30 @@ Analysis   FastAPI
    trajectory and covariance over time with the detector's flagged points
    overlaid, supports side-by-side run comparisons, and can trigger a new
    analysis with one click.
+7. A **conversational agent** (`backend/app/agent/`) answers natural-
+   language questions about experiments, runs, and degradation results by
+   calling tools backed by the same data — e.g. "analyze run 2 and tell
+   me the flagged percentage." It runs entirely locally via
+   [Ollama](https://ollama.com) — no external API key, no data leaving
+   the machine. Try it at `/chat` in the frontend.
 
 The whole stack (database, backend, frontend) can be run together with a
-single `docker compose up`.
+single `docker compose up`. The agent requires a local Ollama instance
+running separately (see below) — it isn't containerized, since it needs
+direct GPU access.
 
 ## Repo structure
 
 ```
 db/                 -> SQL schema
-backend/            -> FastAPI (Python) — REST API, degradation detector, tests
+backend/            -> FastAPI (Python) — REST API, degradation detector,
+                        local LLM agent (Ollama tool-calling), tests
 ingestion/cpp/      -> C++ node that reads rosbag2 and writes to Postgres
 frontend/           -> Next.js (TypeScript) frontend + tests
 .github/workflows/  -> CI (backend and frontend tests on every push)
 docker-compose.yml
 docs/decisions.md   -> design decisions log, with the reasoning behind each one
+docs/demo-script.md -> script used for the recorded demo video
 ```
 
 ## Running it
@@ -116,6 +133,28 @@ Opens at `http://localhost:3000`.
 > Don't run Option A and Option B at the same time — they'll fight over
 > ports 3000 and 8000.
 
+### Conversational agent (optional, requires Ollama)
+
+The agent talks to a local Ollama instance — nothing is sent to an
+external API.
+
+```bash
+ollama pull qwen2.5:7b-instruct
+ollama serve   # skip if already running as a background service
+```
+
+Then, with the backend running (Option B above), add these two
+environment variables before starting `uvicorn`:
+
+```bash
+export OLLAMA_BASE_URL="http://localhost:11434"
+export OLLAMA_MODEL="qwen2.5:7b-instruct"
+```
+
+Chat UI at `http://localhost:3000/chat`. First response is noticeably
+slower (10–40s on a laptop GPU) while the model loads and reasons
+through tool calls — subsequent turns are faster.
+
 ### Tests
 
 Backend:
@@ -127,7 +166,9 @@ pytest -v
 
 Runs against a real Postgres instance (not a mock/SQLite) using
 transactions that roll back after each test — see `docs/decisions.md`
-for why.
+for why. The agent's tool-calling loop is tested with a scripted fake
+Ollama client (no real Ollama/GPU required to run the suite); only the
+tool *execution* hits a real (test) database.
 
 Frontend:
 
@@ -147,7 +188,8 @@ ingest_run <path_to_bag> <experiment_id> "postgresql://robo:robo_dev_password@lo
 
 ### Running degradation analysis on a run
 
-From the UI: open a run's page and click "Analyze degradation".
+From the UI: open a run's page and click "Analyze degradation", or just
+ask the chat assistant to do it for you.
 
 From the API directly:
 
@@ -177,13 +219,17 @@ python -m app.analysis.run_detector <run_id> --save    # persists results
 - [x] Automated tests (backend + frontend) running in CI (GitHub Actions)
 - [x] Full stack containerized with Docker Compose
 - [x] Deployed to Azure (Container Apps + PostgreSQL Flexible Server)
+- [x] Local LLM agent (Ollama, tool-calling) for natural-language queries
+      over experiments, runs, and degradation results
 - [ ] Comparison against a second (ML-based) detector
 - [ ] Recorded demo video
 
 ## Design decisions
 
-See [`docs/decisions.md`](docs/decisions.md), every non-trivial decision
+See [`docs/decisions.md`](docs/decisions.md) - every non-trivial decision
 (why Postgres, why this schema, why testing with transactions instead of a
 separate database, a Docker bug found and fixed, how the degradation
-detector went from 25% false positives to a defensible baseline, etc.) is
-documented there with the reasoning, not just the outcome.
+detector went from 25% false positives to a defensible baseline, why the
+agent runs locally via Ollama, a real bug found integrating its client
+library, etc.) is documented there with the reasoning, not just the
+outcome.

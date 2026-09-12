@@ -26,6 +26,15 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://robo:robo_dev_password@db:5432/robo_diagnostics
+      # Ollama runs on the HOST machine, not in a container (it needs
+      # direct GPU access, which is more setup than it's worth
+      # containerizing here). "host.docker.internal" is how Docker
+      # Desktop (Windows/Mac) exposes the host to containers — on native
+      # Linux Docker Engine this needs `extra_hosts` below instead.
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+      OLLAMA_MODEL: qwen2.5:7b-instruct
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "8000:8000"
     volumes:
@@ -35,8 +44,6 @@ services:
     build:
       context: ./frontend
       args:
-        # Corre server-side dentro del contenedor -> usa el nombre del
-        # servicio de Docker ("backend"), no localhost/127.0.0.1.
         NEXT_PUBLIC_API_BASE_URL: http://backend:8000
     container_name: robo_diagnostics_frontend
     depends_on:

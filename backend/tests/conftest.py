@@ -9,17 +9,11 @@ from app.models import Base, Experiment, Run, TelemetryPoint
 
 @pytest.fixture(scope="session", autouse=True)
 def _ensure_schema():
-    # Idempotente: no rompe nada si las tablas ya existen (las crea
-    # schema.sql en desarrollo normal). Nos asegura que los tests puedan
-    # correr incluso en un entorno limpio (ej. CI) sin depender del
-    # init script de Docker.
     Base.metadata.create_all(bind=engine)
 
 
 @pytest.fixture()
 def db_session():
-    """Una conexión + transacción por test. Todo lo que el test haga se
-    revierte al final — nunca toca tus datos reales de desarrollo."""
     connection = engine.connect()
     transaction = connection.begin()
     TestingSessionLocal = sessionmaker(bind=connection)
@@ -80,11 +74,6 @@ def sample_run_with_telemetry(db_session, sample_experiment):
 
 @pytest.fixture()
 def run_with_analyzable_telemetry(db_session, sample_experiment):
-    """A run with enough points for the detector's rolling window to be
-    meaningful (unlike sample_run_with_telemetry, which only has 2 points
-    — too few for MIN_WINDOW_POINTS), including a short sustained spike
-    so analysis has something real to flag.
-    """
     run = Run(experiment_id=sample_experiment.id, status="complete")
     db_session.add(run)
     db_session.commit()
@@ -95,7 +84,6 @@ def run_with_analyzable_telemetry(db_session, sample_experiment):
                         cov_xx=0.01, cov_yy=0.01, cov_tt=0.01)
         for i in range(30)
     ]
-    # sustained 2-point spike, so it clears the temporal-consistency check
     points.append(TelemetryPoint(run_id=run.id, t_seconds=30.0, x=0.0, y=0.0, theta=0.0,
                                   cov_xx=0.01, cov_yy=0.01, cov_tt=5.0))
     points.append(TelemetryPoint(run_id=run.id, t_seconds=31.0, x=0.0, y=0.0, theta=0.0,

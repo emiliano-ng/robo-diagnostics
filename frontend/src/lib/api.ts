@@ -1,4 +1,13 @@
-import type { Experiment, Run, TelemetryPoint, CompareResult, Diagnostic, AnalysisSummary } from "./types";
+import type {
+  Experiment,
+  Run,
+  TelemetryPoint,
+  CompareResult,
+  Diagnostic,
+  AnalysisSummary,
+  ChatMessage,
+  ChatResponse,
+} from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 
@@ -41,6 +50,14 @@ export function getDiagnostics(runId: number): Promise<Diagnostic[]> {
 export function analyzeRun(runId: number): Promise<AnalysisSummary> {
   return apiFetch<AnalysisSummary>(`/experiments/runs/${runId}/diagnostics/analyze`, {
     method: "POST",
+  });
+}
+
+export function sendChatMessage(message: string, history: ChatMessage[]): Promise<ChatResponse> {
+  return apiFetch<ChatResponse>("/agent/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message, history }),
   });
 }
 
