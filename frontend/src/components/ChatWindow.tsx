@@ -4,19 +4,63 @@ import { useState, useTransition, useRef, useEffect } from "react";
 import { sendChatMessageAction } from "@/app/chat/actions";
 import type { ChatMessage } from "@/lib/types";
 
-export default function ChatWindow() {
+interface ToolCall {
+  function: { name: string; arguments: Record<string, unknown> };
+}
+
+function formatToolCall(call: ToolCall): string {
+  const args = Object.entries(call.function.arguments || {})
+    .map(([k, v]) => `${k}: ${JSON.stringify(v)}`)
+    .join(", ");
+  return `🔧 called ${call.function.name}(${args})`;
+}
+
+type DisplayItem =
+  | { kind: "user"; content: string; key: string }
+  | { kind: "assistant"; content: string; key: string }
+  | { kind: "tool"; content: string; key: string };
+
+// Turns the raw message history (which includes system/tool-result
+// messages the model needs but a person doesn't) into what actually
+// gets rendered: user/assistant bubbles, plus a compact indicator for
+// every tool call the agent made along the way. Showing the tool calls
+// is what makes it visible that this is really calling functions
+// against the platform's own API, not just generating text.
+function toDisplayItems(history: ChatMessage[]): DisplayItem[] {
+  return history.flatMap((m, i): DisplayItem[] => {
+    if (m.role === "user") {
+      return [{ kind: "user", content: m.content, key: `u-${i}` }];
+    }
+    if (m.role === "assistant" && m.tool_calls) {
+      const calls = m.tool_calls as ToolCall[];
+      return calls.map((call, j) => ({
+        kind: "tool" as const,
+        content: formatToolCall(call),
+        key: `t-${i}-${j}`,
+      }));
+    }
+    if (m.role === "assistant" && m.content) {
+      return [{ kind: "assistant", content: m.content, key: `a-${i}` }];
+    }
+    return [];
+  });
+}
+
+export default function ChatWindow({
+  className = "flex flex-col h-[70vh] border border-neutral-200 rounded-lg overflow-hidden",
+}: {
+  className?: string;
+}) {
   const [history, setHistory] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isPending, startTransition] = useTransition();
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Only user/assistant turns are shown to the person — system and tool
-  // messages exist for the model's benefit, not for display.
-  const visibleMessages = history.filter((m) => m.role === "user" || m.role === "assistant");
+  const displayItems = toDisplayItems(history);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [visibleMessages.length]);
+  }, [displayItems.length]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -31,9 +75,9 @@ export default function ChatWindow() {
   }
 
   return (
-    <div className="flex flex-col h-[70vh] border border-neutral-200 rounded-lg overflow-hidden">
-      <div className="flex-1 overflow-y-auto p-5 space-y-4">
-        {visibleMessages.length === 0 && (
+    <div className={`${className} bg-white text-neutral-900`} style={{ colorScheme: "light" }}>
+      <div className="flex-1 overflow-y-auto p-5 space-y-3">
+        {displayItems.length === 0 && (
           <p className="text-neutral-500 text-sm">
             Ask about your experiments and runs — e.g. &quot;which runs have
             the highest degradation?&quot; or &quot;analyze run 2 and tell me
@@ -41,18 +85,36 @@ export default function ChatWindow() {
           </p>
         )}
 
-        {visibleMessages.map((m, i) => (
-          <div
-            key={i}
-            className={`max-w-[80%] rounded-lg px-4 py-2 text-sm ${
-              m.role === "user"
-                ? "ml-auto bg-neutral-900 text-white"
-                : "mr-auto bg-neutral-100 text-neutral-900"
-            }`}
-          >
-            {m.content}
-          </div>
-        ))}
+        {displayItems.map((item) => {
+          if (item.kind === "user") {
+            return (
+              <div
+                key={item.key}
+                className="max-w-[80%] ml-auto rounded-lg px-4 py-2 text-sm bg-neutral-900 text-white"
+              >
+                {item.content}
+              </div>
+            );
+          }
+          if (item.kind === "tool") {
+            return (
+              <div
+                key={item.key}
+                className="max-w-[80%] mr-auto rounded px-3 py-1.5 text-xs font-mono text-neutral-500 bg-neutral-50 border border-neutral-200"
+              >
+                {item.content}
+              </div>
+            );
+          }
+          return (
+            <div
+              key={item.key}
+              className="max-w-[80%] mr-auto rounded-lg px-4 py-2 text-sm bg-neutral-100 text-neutral-900"
+            >
+              {item.content}
+            </div>
+          );
+        })}
 
         {isPending && (
           <div className="mr-auto bg-neutral-100 text-neutral-500 rounded-lg px-4 py-2 text-sm">
@@ -70,7 +132,8 @@ export default function ChatWindow() {
           onChange={(e) => setInput(e.target.value)}
           placeholder="Ask a question..."
           disabled={isPending}
-          className="flex-1 rounded-md border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-400"
+          className="flex-1 rounded-md border border-neutral-300 bg-white text-neutral-900 placeholder-neutral-400 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-400"
+          style={{ colorScheme: "light", color: "#171717", backgroundColor: "#ffffff" }}
         />
         <button
           type="submit"

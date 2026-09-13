@@ -8,6 +8,7 @@ from sqlalchemy.exc import OperationalError
 from app.routers import experiments, agent
 from app.database import check_db_connection
 from app.logging_config import configure_logging
+from app.agent.ollama_client import OllamaUnavailableError
 
 configure_logging()
 logger = logging.getLogger(__name__)
@@ -43,6 +44,18 @@ async def database_unavailable_handler(request: Request, exc: OperationalError):
     return JSONResponse(
         status_code=503,
         content={"error": "database_unavailable", "detail": "Could not reach the database. Try again shortly."},
+    )
+
+
+@app.exception_handler(OllamaUnavailableError)
+async def ollama_unavailable_handler(request: Request, exc: OllamaUnavailableError):
+    logger.error("Ollama unavailable handling %s %s: %s", request.method, request.url.path, exc)
+    return JSONResponse(
+        status_code=503,
+        content={
+            "error": "ollama_unavailable",
+            "detail": "Could not reach the local Ollama server. Make sure it's running (`ollama serve`).",
+        },
     )
 
 

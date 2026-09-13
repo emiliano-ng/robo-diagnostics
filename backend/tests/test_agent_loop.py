@@ -1,6 +1,8 @@
 import json
 
-from app.agent.ollama_client import run_agent_turn, MAX_TOOL_ITERATIONS
+import pytest
+
+from app.agent.ollama_client import run_agent_turn, MAX_TOOL_ITERATIONS, OllamaUnavailableError
 
 
 class FakeOllamaClient:
@@ -139,3 +141,35 @@ def test_agent_converts_typed_message_object_to_plain_dict(db_session):
     # every entry in history must be a real dict — this is what failed
     # to serialize before the fix
     assert all(isinstance(m, dict) for m in history)
+
+
+class FailingOllamaClient:
+    """Simulates Ollama being unreachable (connection refused, server
+    down, DNS failure, etc.) — any exception from the underlying HTTP
+    call, not a specific one, since the point is that the loop treats
+    all of them the same way: as "can't reach Ollama", not "our code
+    is broken".
+    """
+
+    def chat(self, model, messages, tools):
+        raise ConnectionError("connection refused")
+
+
+def test_agent_raises_ollama_unavailable_when_the_server_is_unreachable(db_session):
+    with pytest.raises(OllamaUnavailableError):
+        run_agent_turn(db_session, [], "hi", client=FailingOllamaClient())
+
+
+def test_ollama_unavailable_does_not_mask_tool_execution_errors(db_session, sample_experiment):
+    # A tool that fails internally (bad arguments, unknown tool) must
+    # still come back as a normal {"error": ...} tool result and let the
+    # loop continue — it must NOT be misclassified as "Ollama is down".
+    fake = FakeOllamaClient([
+        _tool_call_response("not_a_real_tool", {}),
+        _text_response("Handled the error gracefully."),
+    ])
+
+    # Should not raise OllamaUnavailableError.
+    reply, history = run_agent_turn(db_session, [], "do something invalid", client=fake)
+
+    assert reply == "Handled the error gracefully."

@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:7b-instruct")
+OLLAMA_TIMEOUT_SECONDS = float(os.getenv("OLLAMA_TIMEOUT_SECONDS", "90"))
 
 SYSTEM_PROMPT = (
     "You are a diagnostics assistant for a robotics experiment platform. "
@@ -35,6 +36,15 @@ SYSTEM_PROMPT = (
 # stuck in a loop, or repeatedly calling a tool with bad arguments) —
 # without this, a single confused turn could hang the request forever.
 MAX_TOOL_ITERATIONS = 6
+
+
+class OllamaUnavailableError(Exception):
+    """Raised when the local Ollama server can't be reached, or times
+    out — distinct from a bug in our own code, so it gets a clear 503
+    with an actionable message instead of a generic 500. This is the
+    difference between "the agent is broken" and "Ollama isn't running",
+    which matters most exactly when it happens live during a demo.
+    """
 
 
 def _execute_tool_call(db, name: str, arguments: dict) -> dict:
@@ -65,7 +75,7 @@ def run_agent_turn(
     production it defaults to a real client pointed at OLLAMA_BASE_URL.
     """
     if client is None:
-        client = Client(host=OLLAMA_BASE_URL)
+        client = Client(host=OLLAMA_BASE_URL, timeout=OLLAMA_TIMEOUT_SECONDS)
 
     messages = list(conversation)
     if not messages or messages[0].get("role") != "system":
@@ -73,7 +83,18 @@ def run_agent_turn(
     messages.append({"role": "user", "content": user_message})
 
     for _ in range(MAX_TOOL_ITERATIONS):
-        response = client.chat(model=OLLAMA_MODEL, messages=messages, tools=TOOL_SCHEMAS)
+        try:
+            response = client.chat(model=OLLAMA_MODEL, messages=messages, tools=TOOL_SCHEMAS)
+        except Exception as e:
+            # Only the network/model call is wrapped here — tool
+            # execution errors are already handled inside
+            # _execute_tool_call and returned as normal tool results, so
+            # they never get misclassified as "Ollama is unreachable".
+            logger.error("Failed to reach Ollama at %s: %s", OLLAMA_BASE_URL, e)
+            raise OllamaUnavailableError(
+                f"Could not reach Ollama at {OLLAMA_BASE_URL}. Is it running?"
+            ) from e
+
         message = response["message"]
 
         # The ollama client returns a typed Message object here, not a
