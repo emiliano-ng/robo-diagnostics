@@ -14,13 +14,13 @@ into 4 tables instead of one flat table.
   kept separate from `diagnostics` on purpose: telemetry is *observed*
   data, diagnostics is *inferred* data from a detector. Mixing them would
   make it impossible to tell "the robot measured this" apart from "my
-  model computed this" — important if you ever run two different
+  model computed this" - important if you ever run two different
   detectors over the same run and want to compare them.
 
 **Trade-off accepted:** more JOINs for queries that combine all 4 tables,
 in exchange for each table having a clear, defensible grain.
 
-**Index chosen:** `(run_id, t_seconds)` on `telemetry_points` — because
+**Index chosen:** `(run_id, t_seconds)` on `telemetry_points` - because
 the dominant query in the system is "give me the full time series for
 this run", almost never "give me all points with x > N across runs".
 
@@ -45,14 +45,14 @@ degradation detector needs (comparing degradation across runs). Storing
 the absolute epoch would make that comparison much more awkward.
 
 **Trade-off:** we lose the real wall-clock time of an event unless we
-reconstruct it as `t0 + t_seconds` — acceptable since `runs.started_at`
+reconstruct it as `t0 + t_seconds` - acceptable since `runs.started_at`
 already stores that reference.
 
 ## Testing with rolled-back transactions, not a separate test DB
 
 **Decision:** tests run against the same development Postgres
 (`robo_diagnostics`), but each test opens its own transaction that's
-rolled back at the end — no real `commit` ever happens.
+rolled back at the end - no real `commit` ever happens.
 
 **Why:** a separate test DB (`robo_diagnostics_test`) is the "cleaner"
 option in theory, but adds another setup step (creating the DB, keeping
@@ -63,7 +63,7 @@ fewer moving parts.
 
 **Trade-off accepted:** if the project ever needs to test transaction-
 specific behavior (e.g. what happens when two requests race for the same
-row), this approach won't work — a real separate test DB would be needed
+row), this approach won't work - a real separate test DB would be needed
 then. Not the case yet.
 
 ## Frontend: Next.js instead of Vite/CRA
@@ -73,7 +73,7 @@ Vite or Create React App.
 
 **Why:** I already use Next.js in my portfolio, so I'm reusing patterns
 I already know (folder-based routing, Server Components) instead of
-learning a new setup — effort goes into the substance of the project (the
+learning a new setup - effort goes into the substance of the project (the
 diagnostic charts), not into tooling configuration. Next.js also shows up
 consistently in full-stack job postings, making it more recognizable in a
 portfolio repo than a generic SPA.
@@ -89,7 +89,7 @@ and the Recharts charts, which use hooks internally).
 one component with real interaction logic (`RunSelector`), not the chart
 components.
 
-**Why:** the charts are thin presentational wrappers around Recharts —
+**Why:** the charts are thin presentational wrappers around Recharts -
 testing them would mean testing Recharts' own rendering, which adds
 little value. The API client and `RunSelector` are where actual logic
 lives (parsing errors into a typed `ApiError`, tracking selection state,
@@ -102,7 +102,7 @@ actually show up.
 together via a single `docker compose up`, with the frontend built using
 Next.js's `standalone` output mode.
 
-**Why `standalone`:** it produces a much smaller image — only the
+**Why `standalone`:** it produces a much smaller image - only the
 `server.js` file and the subset of `node_modules` actually needed at
 runtime, instead of copying the whole project (including devDependencies)
 into the image.
@@ -114,13 +114,13 @@ isolated `localhost`, so `127.0.0.1:8000` inside the frontend container
 would never reach the backend container. Docker Compose's internal DNS
 resolves service names (`backend`) to the right container automatically.
 
-**Bug found and fixed — Next.js standalone + Docker HOSTNAME binding:**
+**Bug found and fixed - Next.js standalone + Docker HOSTNAME binding:**
 the frontend container failed to start with
 `Error: getaddrinfo EAI_AGAIN <container_id>`. Root cause: Docker
 automatically sets a `HOSTNAME` environment variable on every container,
 equal to its container ID. Next.js's `standalone` server.js reads
 `process.env.HOSTNAME` to decide which address to bind to, and tried to
-resolve the container ID as if it were a real hostname — which fails,
+resolve the container ID as if it were a real hostname - which fails,
 since it isn't DNS-resolvable. Fixed by explicitly setting
 `ENV HOSTNAME=0.0.0.0` in the final Docker stage, so Next.js binds to all
 interfaces regardless of what Docker sets automatically.
@@ -129,18 +129,18 @@ interfaces regardless of what Docker sets automatically.
 
 **Decision:** a rolling z-score detector over EKF covariance (`cov_xx`,
 `cov_yy`, `cov_tt`), comparing each point against the mean/std of the
-preceding window — not the whole run — so "normal" can drift over the
+preceding window - not the whole run - so "normal" can drift over the
 course of a run without permanently skewing the baseline.
 
 **Why this over jumping straight to ML:** without human-labeled ground
 truth (nobody has annotated which seconds of a real run were "actually"
 degraded), a more sophisticated model has nothing meaningful to be
-validated against — it would just produce a different set of guesses, not
+validated against - it would just produce a different set of guesses, not
 a provably better one. A simple, inspectable baseline you can reason
 about point-by-point is the more honest place to start.
 
 **Two real bugs found by testing against actual `slam_bot` data (not
-just synthetic data) — this is why both were tested:**
+just synthetic data) - this is why both were tested:**
 
 1. **Epsilon too small relative to the real data's scale.** The initial
    implementation used `STD_EPSILON = 1e-6` to avoid dividing by zero
@@ -150,11 +150,11 @@ just synthetic data) — this is why both were tested:**
    happened to be nearly flat and a completely ordinary sensor jitter
    came through. Fixed by raising the floor to `1e-4`, matching the
    actual scale of the signal, and separately capping the *reported*
-   score at 50 for readability — capping never changes classification,
+   score at 50 for readability - capping never changes classification,
    since anything above `degraded_z` was already unambiguously flagged.
 
 2. **No temporal consistency requirement.** A raw point-by-point
-   classifier flagged ~25% of all 944 points in a real run — useless for
+   classifier flagged ~25% of all 944 points in a real run - useless for
    a human reviewer, since it's mostly single-sample noise blips, not
    real events. Fixed by requiring a deviation to be confirmed by an
    immediate neighbor (previous or next point) before elevating status
@@ -163,27 +163,27 @@ just synthetic data) — this is why both were tested:**
    does not. This brought the flagged rate down to ~13%, with the
    confirmed clusters lining up with the two anomalies already spotted
    *visually* in the covariance chart before the detector existed
-   (~38s, ~70–73s) — independent validation that the detector is
+   (~38s, ~70–73s) - independent validation that the detector is
    catching real signal, not just noise at a different rate.
 
 **Known remaining limitation:** without ground-truth labels, 13% is a
-reasonable stopping point, not a provably optimal one — some flagged
+reasonable stopping point, not a provably optimal one - some flagged
 clusters may correspond to ordinary covariance changes during turns
 rather than genuine degradation. Distinguishing "operationally normal
 maneuvering" from "a problem worth a human's attention" is exactly the
 kind of judgment call that would need a domain expert's labels to
-resolve properly — the detector's honest framing is "this deviated from
+resolve properly - the detector's honest framing is "this deviated from
 recent behavior, worth a look", not "this is confirmed degradation".
 
 ## Analysis triggered via a Server Action, not a client-side fetch
 
 **Decision:** the "Analyze degradation" button on the run page calls a
 Next.js Server Action (`analyzeRunAction`, `"use server"`), which then
-calls the backend — instead of the button doing a `fetch()` directly
+calls the backend - instead of the button doing a `fetch()` directly
 from the browser.
 
 **Why:** in the Docker Compose deployment, the frontend reaches the
-backend via the internal Docker network at `http://backend:8000` — a
+backend via the internal Docker network at `http://backend:8000` - a
 hostname that only resolves *inside* Docker's network, never from the
 user's actual browser. Since all `NEXT_PUBLIC_*` values get baked into
 the JavaScript bundle at build time (including whatever code runs in the
@@ -191,23 +191,23 @@ browser), a client-side fetch to that address would work in local
 development (where `.env.local` points at `127.0.0.1:8000`) but silently
 fail once deployed via Docker Compose. Server Actions always execute on
 the Next.js server itself, which does have correct network access to
-`backend:8000` — so the same code works in both environments without an
+`backend:8000` - so the same code works in both environments without an
 environment-specific branch.
 
 **How it stays in sync with the page:** the Server Action calls
 `revalidatePath()` after a successful analysis, so the Server Component
-re-fetches fresh diagnostics on the next render — no manual client-side
+re-fetches fresh diagnostics on the next render - no manual client-side
 refetch logic needed.
 
 ## Deploying to Azure: real obstacles hit with a student subscription
 
 **Decision:** Azure Container Apps for both backend and frontend (reusing
 the exact same Dockerfiles built for Docker Compose, unmodified), plus
-Azure Database for PostgreSQL Flexible Server (Burstable B1ms) — all in
+Azure Database for PostgreSQL Flexible Server (Burstable B1ms) - all in
 `canadacentral`.
 
 **Why Container Apps over alternatives:** the frontend relies on Next.js
-Server Actions (see above), which need a real, always-on Node server —
+Server Actions (see above), which need a real, always-on Node server -
 ruling out static hosting. Container Apps runs the same container image
 that's already tested via Docker Compose, so "it works locally" transfers
 directly to "it works in the cloud" with no separate deployment-specific
@@ -215,23 +215,23 @@ build path to maintain.
 
 **Real problems hit, in the order they appeared (a student/education
 subscription has meaningfully different constraints than a normal paid
-one — worth knowing going in):**
+one - worth knowing going in):**
 
 1. **Region restrictions.** The subscription has a policy limiting
    deployments to a small allow-list of regions
    (`canadacentral`, `westus2`, `westus3`, `chilecentral`, `centralus`),
-   invisible from a generic "region not available" error — found via
+   invisible from a generic "region not available" error - found via
    `az policy assignment list` / `az policy assignment show`, not
    guesswork.
 2. **Resource providers not pre-registered.** `Microsoft.DBforPostgreSQL`,
    `Microsoft.ContainerRegistry`, `Microsoft.App`, and
    `Microsoft.OperationalInsights` all needed an explicit
    `az provider register` before their respective resources could be
-   created — a one-time subscription-level step that a normal paid
+   created - a one-time subscription-level step that a normal paid
    subscription typically already has done.
 3. **ACR Tasks (remote image builds) disabled for the subscription.**
    `az containerapp up --source ...` tries to build the container image
-   *inside Azure* via ACR Tasks — blocked outright
+   *inside Azure* via ACR Tasks - blocked outright
    (`TasksOperationsNotAllowed`) on this subscription tier. Worked around
    by building the image locally with the same Docker setup already used
    for Docker Compose, then `docker push`-ing it to the registry directly,
@@ -239,7 +239,7 @@ one — worth knowing going in):**
    remote build) instead of `up`.
 
 **Why this is worth documenting, not just fixing and moving on:** none of
-these were application bugs — they were environment-specific platform
+these were application bugs - they were environment-specific platform
 constraints that only show up against a real cloud subscription, the kind
 of friction a local Docker Compose setup (or a tutorial written against a
 standard paid subscription) never surfaces. Diagnosing each one required
@@ -265,7 +265,7 @@ OpenAI or Anthropic.
 that might get poked at by anyone with the repo link; nothing about the
 platform's data leaves the machine; and it directly reuses infrastructure
 already set up for a separate personal project (a voice assistant built
-on Ollama). The trade-off is real, though — a local 7B model is slower
+on Ollama). The trade-off is real, though - a local 7B model is slower
 (10–40s for a multi-tool-call turn on a laptop GPU) and less reliable at
 tool-calling than a frontier hosted model; that's an accepted cost for
 what this project needs to demonstrate (tool-calling architecture),
@@ -275,7 +275,7 @@ not a production latency target.
 
 **Decision:** all database queries live in `app/services.py`, called by
 both the REST routers (`app/routers/experiments.py`) and the agent's
-tool functions (`app/agent/tools.py`) — neither talks to SQLAlchemy
+tool functions (`app/agent/tools.py`) - neither talks to SQLAlchemy
 directly.
 
 **Why:** the agent's tools need mostly the same data the REST API already
@@ -289,20 +289,20 @@ silently drift the first time one was changed without the other.
 output. `services.get_trajectory()` returns full `TelemetryPoint` ORM
 objects (fine for a REST response with hundreds of points); the agent's
 `get_run_summary` tool wraps that same call but returns only a handful
-of aggregate numbers (point count, duration, x/y range) — see the next
+of aggregate numbers (point count, duration, x/y range) - see the next
 entry for why.
 
 ## Agent tools return summaries, never raw telemetry arrays
 
 **Decision:** every tool exposed to the LLM (`list_experiments`,
 `get_run_summary`, `get_diagnostics_summary`, etc.) returns a small
-JSON-serializable summary — counts, ranges, percentages, a capped list
-of sample timestamps — never the raw array of ~1000 telemetry points a
+JSON-serializable summary - counts, ranges, percentages, a capped list
+of sample timestamps - never the raw array of ~1000 telemetry points a
 run can contain.
 
 **Why:** dumping a run's full point array into a 7B local model's context
 window would both blow past what it can usefully reason over in one turn
-and make every response noticeably slower for no benefit — the model
+and make every response noticeably slower for no benefit - the model
 doesn't need every raw covariance value to answer "what percent of this
 run was flagged," it needs the percentage. `get_diagnostics_summary`
 caps its `sample_flagged_timestamps` list at 15 entries for the same
@@ -314,7 +314,7 @@ flagged.
 
 **Problem:** the very first real (non-mocked) test against a running
 Ollama instance failed with
-`pydantic_core._pydantic_core.ValidationError: history.2 — Input should
+`pydantic_core._pydantic_core.ValidationError: history.2 - Input should
 be a valid dictionary`, even though the endpoint's response model
 (`history: list[dict]`) matched what the code was building.
 
@@ -323,26 +323,85 @@ returns a typed `Message` object (a pydantic model internal to the
 library), not a plain `dict`. The tool-calling loop appended that object
 directly into the conversation history; the history round-trips through
 Pydantic's `ChatResponse` model on the way back to the client, which
-rejects anything that isn't an actual `dict` — so the failure only
+rejects anything that isn't an actual `dict` - so the failure only
 surfaced when the *response* was being serialized, several steps removed
 from where the wrong type was introduced. Two prior tool-calling turns
 had already succeeded (visible in the request logs) before this tripped,
 which made it look at first like a deeper reasoning failure rather than
 a type mismatch.
 
-**Fix:** convert the message before appending it —
+**Fix:** convert the message before appending it -
 `message.model_dump() if hasattr(message, "model_dump") else dict(message)`
-— handling both the real client's typed object and the plain-dict
+- handling both the real client's typed object and the plain-dict
 messages used by the test suite's fake client, so the same code path
 works in both places without a test-only branch.
 
 **Why this was worth a regression test, not just a fix:** the mocked
 loop tests all passed before this was found, because the fakes used in
-those tests already returned plain dicts — they couldn't have caught
+those tests already returned plain dicts - they couldn't have caught
 this. `test_agent_converts_typed_message_object_to_plain_dict` uses a
 fake that specifically returns an object with a `model_dump()` method
 (mimicking the real client's shape) instead of a dict, so this class of
 bug can't silently come back.
+
+## Hardening the chat: visible tool calls, graceful Ollama errors, a floating widget
+
+**Decision:** three small changes made after the agent's first working
+version, all aimed at the same thing - not letting the chat fail silently
+or confusingly, especially live during a demo.
+
+**1. Tool calls shown inline.** The first version only showed the
+model's final text reply - the fact that it had actually called
+`analyze_run` or `list_experiments` against real data was invisible.
+Each tool call now renders as a compact `🔧 called tool_name(args)`
+line in the conversation, so it's visible on screen that this is really
+calling functions against the platform's own API, not just generating
+plausible-sounding text.
+
+**2. `OllamaUnavailableError` instead of a generic failure.** If Ollama
+is down or unreachable, the tool-calling loop now raises a specific
+exception (caught only around the `client.chat()` call itself, so a
+tool that fails internally is never misclassified as "Ollama is down" -
+see the next entry) with its own FastAPI exception handler returning a
+503 with an actionable message. The Server Action on the frontend
+catches this and turns it into a normal-looking assistant message
+("make sure Ollama is running...") instead of the chat hanging on
+"Thinking..." forever with no feedback.
+
+**3. Floating widget instead of a dedicated `/chat` route.** Having the
+assistant live behind a separate page/link made it feel bolted-on and
+easy to forget existed. `ChatWidget` renders a small toggleable panel
+(reusing the same `ChatWindow` component, parameterized by a `className`
+prop for sizing) mounted in the root layout, so it's one click away from
+anywhere in the app rather than a navigation destination.
+
+## Bug: Tailwind v4's `color-scheme` made chat input text invisible
+
+**Problem:** the chat's text input rendered with light gray text on a
+white background - visible to no one - despite the input having
+explicit `text-neutral-900`/`bg-white` Tailwind classes.
+
+**Root cause:** Tailwind v4's Preflight sets `color-scheme: light dark`
+by default. On a system with a dark OS preference, browsers use that to
+choose *native* rendering for form controls' unstyled parts - and in
+practice this can still leak into the text color some browsers pick for
+an `<input>`, even when the page's own CSS sets a `color` utility class,
+because the UA's color-scheme-driven defaults and the page's authored
+styles were fighting over specificity in a way that isn't consistent
+across engines.
+
+**Fix:** force light mode explicitly for the chat window via an inline
+`style={{ colorScheme: "light" }}` on its container, plus a belt-and-
+suspenders explicit inline `color`/`backgroundColor` on the `<input>`
+itself - inline styles have higher specificity than any class-based
+utility, so this is the one thing guaranteed to win regardless of the
+browser's dark-mode/color-scheme interaction quirks.
+
+**Why this is worth knowing beyond this one input:** any project using
+Tailwind v4 with a dark-mode-aware OS and native form controls
+(`input`, `select`, `textarea`) is exposed to this - it won't show up
+in light-OS-preference testing, which is exactly why it slipped through
+the first pass here.
 
 ## Still to document as the project progresses
 

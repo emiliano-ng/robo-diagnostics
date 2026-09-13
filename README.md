@@ -3,14 +3,14 @@
 **Live demo:** [frontend](https://robo-diagnostics-frontend.thankfulmoss-0a7f7ee4.canadacentral.azurecontainerapps.io) · [API docs](https://robo-diagnostics-backend.thankfulmoss-0a7f7ee4.canadacentral.azurecontainerapps.io/docs)
 
 > Note: to control cloud costs, the database is stopped between active
-> demo sessions. If the live links above are unresponsive, that's why —
+> demo sessions. If the live links above are unresponsive, that's why -
 > everything below still works fully from a local clone. The
 > conversational agent (below) requires a local Ollama instance and
 > isn't part of the Azure deployment.
 
 A system to ingest, store, analyze, and diagnose robotics experiments
-—currently built on top of [`slam_bot`](https://github.com/emiliano-ng/SLAM-bot),
-an EKF-SLAM implementation built from scratch— that automatically flags
+-currently built on top of [`slam_bot`](https://github.com/emiliano-ng/SLAM-bot),
+an EKF-SLAM implementation built from scratch- that automatically flags
 likely localization degradation from real telemetry data, and answers
 natural-language questions about it through a local LLM agent.
 
@@ -38,7 +38,7 @@ Analysis   FastAPI
   React / TypeScript
         │
         ▼
-Local LLM agent (Ollama) — natural-language
+Local LLM agent (Ollama) - natural-language
 queries over the same data, via tool-calling
 ```
 
@@ -55,7 +55,7 @@ queries over the same data, via tool-calling
    list an experiment's runs, fetch a run's full trajectory, compare the
    trajectories of several runs, and trigger/read degradation analysis.
 5. A **degradation detector** (`backend/app/analysis/`) flags points whose
-   EKF covariance deviates sharply and persistently from recent behavior —
+   EKF covariance deviates sharply and persistently from recent behavior -
    a rolling z-score with a temporal-consistency check, tuned and validated
    against real `slam_bot` telemetry (see `docs/decisions.md`).
 6. A **Next.js frontend** (`frontend/`) browses experiments and runs, plots
@@ -64,21 +64,24 @@ queries over the same data, via tool-calling
    analysis with one click.
 7. A **conversational agent** (`backend/app/agent/`) answers natural-
    language questions about experiments, runs, and degradation results by
-   calling tools backed by the same data — e.g. "analyze run 2 and tell
+   calling tools backed by the same data - e.g. "analyze run 2 and tell
    me the flagged percentage." It runs entirely locally via
-   [Ollama](https://ollama.com) — no external API key, no data leaving
-   the machine. Try it at `/chat` in the frontend.
+   [Ollama](https://ollama.com) - no external API key, no data leaving
+   the machine. Available from a floating widget on every page (not
+   just a dedicated route), with each tool call the agent makes shown
+   inline in the conversation, and a clear message instead of a hang or
+   generic error if Ollama isn't reachable.
 
 The whole stack (database, backend, frontend) can be run together with a
 single `docker compose up`. The agent requires a local Ollama instance
-running separately (see below) — it isn't containerized, since it needs
+running separately (see below) - it isn't containerized, since it needs
 direct GPU access.
 
 ## Repo structure
 
 ```
 db/                 -> SQL schema
-backend/            -> FastAPI (Python) — REST API, degradation detector,
+backend/            -> FastAPI (Python) - REST API, degradation detector,
                         local LLM agent (Ollama tool-calling), tests
 ingestion/cpp/      -> C++ node that reads rosbag2 and writes to Postgres
 frontend/           -> Next.js (TypeScript) frontend + tests
@@ -90,7 +93,7 @@ docs/demo-script.md -> script used for the recorded demo video
 
 ## Running it
 
-### Option A — full stack with Docker Compose (closest to production)
+### Option A - full stack with Docker Compose (closest to production)
 
 ```bash
 docker compose up --build
@@ -99,7 +102,7 @@ docker compose up --build
 This builds and starts the database, backend, and frontend together.
 Open `http://localhost:3000`.
 
-### Option B — manual, for faster local iteration
+### Option B - manual, for faster local iteration
 
 **1. Database:**
 
@@ -130,12 +133,12 @@ npm run dev
 
 Opens at `http://localhost:3000`.
 
-> Don't run Option A and Option B at the same time — they'll fight over
+> Don't run Option A and Option B at the same time - they'll fight over
 > ports 3000 and 8000.
 
 ### Conversational agent (optional, requires Ollama)
 
-The agent talks to a local Ollama instance — nothing is sent to an
+The agent talks to a local Ollama instance - nothing is sent to an
 external API.
 
 ```bash
@@ -151,9 +154,11 @@ export OLLAMA_BASE_URL="http://localhost:11434"
 export OLLAMA_MODEL="qwen2.5:7b-instruct"
 ```
 
-Chat UI at `http://localhost:3000/chat`. First response is noticeably
-slower (10–40s on a laptop GPU) while the model loads and reasons
-through tool calls — subsequent turns are faster.
+Chat UI available from a floating widget (bottom-right) on every page -
+no separate link needed. First response is noticeably slower (10–40s on
+a laptop GPU) while the model loads and reasons through tool calls -
+subsequent turns are faster. If Ollama isn't reachable, the assistant
+says so clearly instead of hanging.
 
 ### Tests
 
@@ -165,7 +170,7 @@ pytest -v
 ```
 
 Runs against a real Postgres instance (not a mock/SQLite) using
-transactions that roll back after each test — see `docs/decisions.md`
+transactions that roll back after each test - see `docs/decisions.md`
 for why. The agent's tool-calling loop is tested with a scripted fake
 Ollama client (no real Ollama/GPU required to run the suite); only the
 tool *execution* hits a real (test) database.
